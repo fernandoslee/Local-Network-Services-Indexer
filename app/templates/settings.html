@@ -74,6 +74,33 @@
     </div>
 </article>
 
+<article>
+    <header><h3>Authentication</h3></header>
+    <form method="post" action="/settings/auth">
+        <label>
+            <input type="checkbox" name="auth_enabled" role="switch"
+                   {% if auth_enabled %}checked{% endif %}>
+            Require login
+        </label>
+        <label for="auth_username">Username
+            <input type="text" id="auth_username" name="auth_username"
+                   value="{{ auth_username }}" placeholder="admin">
+        </label>
+        <label for="auth_password">Password
+            {% if auth_has_password %}
+            <input type="password" id="auth_password" name="auth_password"
+                   placeholder="••••••••"
+                   aria-describedby="auth-pw-help">
+            <small id="auth-pw-help" class="dimmed">Leave blank to keep the current password.</small>
+            {% else %}
+            <input type="password" id="auth_password" name="auth_password"
+                   placeholder="Set a password">
+            {% endif %}
+        </label>
+        <button type="submit">Save Authentication</button>
+    </form>
+</article>
+
 <script>
 function saveSetting(key, value) {
     localStorage.setItem(key, value);

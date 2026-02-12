@@ -26,9 +26,18 @@ class Settings(BaseSettings):
     cache_ttl_seconds: int = 10
     data_dir: Path = _DATA_DIR
 
+    # Authentication (optional)
+    auth_enabled: bool = False
+    auth_username: str = "admin"
+    auth_password: str = ""
+
     @property
     def is_configured(self) -> bool:
         return bool(self.unraid_host and self.unraid_api_key)
+
+    @property
+    def is_auth_configured(self) -> bool:
+        return self.auth_enabled and bool(self.auth_username and self.auth_password)
 
 
 @lru_cache

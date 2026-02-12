@@ -5,6 +5,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.config import get_settings
 from app.main import templates
+from app.services.env_file import write_env
 
 logger = logging.getLogger(__name__)
 
@@ -66,16 +67,13 @@ async def setup_submit(
             "api_key": api_key,
         })
 
-    # Save configuration
-    data_dir = get_settings().data_dir
-    data_dir.mkdir(parents=True, exist_ok=True)
-    env_path = data_dir / ".env"
-    env_path.write_text(
-        f"UNRAID_HOST={host}\n"
-        f"UNRAID_API_KEY={api_key}\n"
-        f"UNRAID_VERIFY_SSL={'true' if verify_ssl else 'false'}\n"
-    )
-    env_path.chmod(0o600)
+    # Save configuration (preserves any existing auth settings)
+    env_path = get_settings().data_dir / ".env"
+    write_env(env_path, {
+        "UNRAID_HOST": host,
+        "UNRAID_API_KEY": api_key,
+        "UNRAID_VERIFY_SSL": "true" if verify_ssl else "false",
+    })
 
     # Clear cached settings and recreate client in-process
     get_settings.cache_clear()

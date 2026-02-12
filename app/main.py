@@ -46,6 +46,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Local Network Services Indexer", lifespan=lifespan)
+
+from app.middleware import BasicAuthMiddleware  # noqa: E402
+
+app.add_middleware(BasicAuthMiddleware, get_settings_fn=get_settings)
+
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
