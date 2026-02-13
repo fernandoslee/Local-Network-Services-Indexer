@@ -293,6 +293,11 @@ class TestResolveWebuiUrl:
         url = _resolve_webui_url("http://[IP]:80", "192.168.1.100", None, [], "container:abc123")
         assert url == "http://192.168.1.100:80"
 
+    def test_bridge_with_container_ip_uses_server_ip(self):
+        """Bridge containers should use server IP, not internal Docker 172.17.x.x IP."""
+        url = _resolve_webui_url("http://[IP]:5572", "192.168.1.100", "172.17.0.2", [], "bridge")
+        assert url == "http://192.168.1.100:5572"
+
     def test_javascript_uri_rejected(self):
         """javascript: URIs should be rejected to prevent XSS."""
         url = _resolve_webui_url("javascript:alert(1)", "1.2.3.4", None, [], "bridge")

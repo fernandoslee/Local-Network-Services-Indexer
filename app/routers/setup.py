@@ -216,7 +216,7 @@ async def setup_submit(
 
         request.app.state.unraid_client = new_client
         request.app.state.unraid_service = UnraidService(
-            new_client, new_settings.cache_ttl_seconds
+            new_client, new_settings.cache_ttl_seconds, server_host=host
         )
         logger.info("Connected to Unraid at %s via setup", host)
 
