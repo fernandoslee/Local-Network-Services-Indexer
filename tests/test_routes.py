@@ -1,9 +1,11 @@
 """Integration tests for routes using FastAPI TestClient."""
 
+from unittest.mock import MagicMock
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from tests.conftest import TEST_PASSWORD
+from tests.conftest import TEST_PASSWORD, _make_cached_data
 
 
 # --- Dashboard ---
@@ -369,3 +371,70 @@ async def test_setup_credentials_username_max_length(client_unconfigured):
     })
     assert resp.status_code == 200
     assert "too long" in resp.text.lower()
+
+
+# --- Container Control Permission ---
+
+@pytest.mark.asyncio
+async def test_containers_cards_has_active_buttons_when_can_control(client):
+    """Card view buttons should have hx-post when can_control=True."""
+    resp = await client.get("/api/containers?view=cards")
+    assert resp.status_code == 200
+    assert 'hx-post="/api/containers/stop' in resp.text
+
+@pytest.mark.asyncio
+async def test_containers_compact_has_active_buttons_when_can_control(client):
+    """Compact view buttons should have hx-post when can_control=True."""
+    resp = await client.get("/api/containers?view=compact")
+    assert resp.status_code == 200
+    assert 'hx-post="/api/containers/stop' in resp.text
+
+@pytest.mark.asyncio
+async def test_containers_cards_has_disabled_buttons_when_no_control(mock_docker_service, configured_settings):
+    """Card view buttons should be disabled when can_control=False."""
+    from unittest.mock import AsyncMock
+    from app.main import app
+    from tests.conftest import _patch_app_settings
+
+    service = AsyncMock()
+    service.get_all_data = AsyncMock(return_value=_make_cached_data(can_control_containers=False))
+    service.can_control_containers = False
+
+    patches = _patch_app_settings(app, configured_settings)
+    with patches[0], patches[1], patches[2], patches[3]:
+        app.state.unraid_client = MagicMock()
+        app.state.unraid_service = service
+        app.state.docker_service = mock_docker_service
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as c:
+            resp = await c.get("/api/containers?view=cards")
+            assert resp.status_code == 200
+            assert "disabled" in resp.text
+            assert "DOCKER:UPDATE_ANY permission required" in resp.text
+            assert 'hx-post="/api/containers/stop' not in resp.text
+
+@pytest.mark.asyncio
+async def test_containers_compact_has_disabled_buttons_when_no_control(mock_docker_service, configured_settings):
+    """Compact view buttons should be disabled when can_control=False."""
+    from unittest.mock import AsyncMock
+    from app.main import app
+    from tests.conftest import _patch_app_settings
+
+    service = AsyncMock()
+    service.get_all_data = AsyncMock(return_value=_make_cached_data(can_control_containers=False))
+    service.can_control_containers = False
+
+    patches = _patch_app_settings(app, configured_settings)
+    with patches[0], patches[1], patches[2], patches[3]:
+        app.state.unraid_client = MagicMock()
+        app.state.unraid_service = service
+        app.state.docker_service = mock_docker_service
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as c:
+            resp = await c.get("/api/containers?view=compact")
+            assert resp.status_code == 200
+            assert "disabled" in resp.text
+            assert "DOCKER:UPDATE_ANY permission required" in resp.text
+            assert 'hx-post="/api/containers/stop' not in resp.text

@@ -96,15 +96,26 @@ async def settings_submit(
                               verify_ssl=verify_ssl, error="API key is required."),
         )
 
-    # Test the connection
+    # Test the connection using a lightweight docker query instead of
+    # client.test_connection() which queries { online } and requires broader permissions
     error = None
+    warnings: list[str] = []
     try:
         async with UnraidClient(host, effective_key, verify_ssl=verify_ssl) as client:
-            connected = await client.test_connection()
-            if not connected:
+            result = await client.query("query { docker { containers { id } } }")
+            if "docker" not in result:
                 error = "Connection test failed. Check host and API key."
+            else:
+                # Check permissions
+                from app.routers.setup import _check_permissions
+                missing_required, missing_optional = await _check_permissions(client)
+                if missing_required:
+                    perm_list = ", ".join(p[0] for p in missing_required)
+                    error = f"API key is missing required permissions: {perm_list}."
+                for perm, desc in missing_optional:
+                    warnings.append(f"{perm}: {desc}")
     except UnraidAuthenticationError:
-        error = "Authentication failed. Check your API key (requires ADMIN role)."
+        error = "Authentication failed. Check your API key permissions."
     except UnraidSSLError:
         error = "SSL certificate error. Try unchecking 'Verify SSL certificate'."
     except UnraidConnectionError as e:
@@ -151,9 +162,13 @@ async def settings_submit(
         )
         logger.info("Reconnected to Unraid at %s via settings", host)
 
+    success_msg = "Connection successful. Settings saved."
+    if warnings:
+        success_msg += " Warning: " + "; ".join(warnings)
+
     return templates.TemplateResponse(
         "settings.html",
-        _settings_context(request, success="Connection successful. Settings saved."),
+        _settings_context(request, success=success_msg),
     )
 
 

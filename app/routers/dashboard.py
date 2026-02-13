@@ -30,4 +30,5 @@ async def dashboard_page(
         "error": data.error,
         "connected": data.error is None,
         "compact": compact,
+        "can_control": data.can_control_containers,
     })

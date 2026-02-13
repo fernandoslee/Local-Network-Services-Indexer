@@ -1,10 +1,15 @@
 """Unit tests for data models and service utilities."""
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
+
+from unraid_api.exceptions import UnraidAPIError, UnraidAuthenticationError
 
 from app.services.unraid import (
     ContainerInfo,
     PluginInfo,
+    UnraidService,
     VmInfo,
     _humanize_plugin_name,
     _resolve_webui_url,
@@ -356,3 +361,103 @@ class TestEnvFileSecurity:
         write_env(env_path, {"KEY": "value"})
         mode = stat.S_IMODE(env_path.stat().st_mode)
         assert mode == 0o600
+
+
+# --- _probe_container_control ---
+
+class TestProbeContainerControl:
+    @pytest.mark.asyncio
+    async def test_generic_api_error_means_has_permission(self):
+        """Non-permission API errors (e.g., 'not found') indicate the key has write access."""
+        from unraid_api.exceptions import UnraidAPIError
+        client = MagicMock()
+        client.start_container = AsyncMock(side_effect=UnraidAPIError("container not found"))
+        service = UnraidService(client)
+        assert service._can_control_containers is None
+        await service._probe_container_control()
+        assert service._can_control_containers is True
+
+    @pytest.mark.asyncio
+    async def test_auth_error_means_no_permission(self):
+        """UnraidAuthenticationError means the key lacks DOCKER:UPDATE_ANY."""
+        from unraid_api.exceptions import UnraidAuthenticationError
+        client = MagicMock()
+        client.start_container = AsyncMock(side_effect=UnraidAuthenticationError("forbidden"))
+        service = UnraidService(client)
+        await service._probe_container_control()
+        assert service._can_control_containers is False
+
+    @pytest.mark.asyncio
+    async def test_forbidden_message_means_no_permission(self):
+        """API error containing 'forbidden' in message means no permission."""
+        from unraid_api.exceptions import UnraidAPIError
+        client = MagicMock()
+        client.start_container = AsyncMock(
+            side_effect=UnraidAPIError("Forbidden resource (path: ['startContainer'])")
+        )
+        service = UnraidService(client)
+        await service._probe_container_control()
+        assert service._can_control_containers is False
+
+    @pytest.mark.asyncio
+    async def test_unexpected_error_assumes_permission(self):
+        """Unexpected errors (network, etc.) default to optimistic True."""
+        client = MagicMock()
+        client.start_container = AsyncMock(side_effect=ConnectionError("timeout"))
+        service = UnraidService(client)
+        await service._probe_container_control()
+        assert service._can_control_containers is True
+
+    def test_can_control_property_optimistic_before_probe(self):
+        """Property returns True before probe runs."""
+        client = MagicMock()
+        service = UnraidService(client)
+        assert service.can_control_containers is True
+
+    @pytest.mark.asyncio
+    async def test_can_control_property_after_probe_false(self):
+        """Property returns False after probe detects no permission."""
+        from unraid_api.exceptions import UnraidAuthenticationError
+        client = MagicMock()
+        client.start_container = AsyncMock(side_effect=UnraidAuthenticationError("forbidden"))
+        service = UnraidService(client)
+        await service._probe_container_control()
+        assert service.can_control_containers is False
+
+
+# --- _check_permissions (setup) ---
+
+class TestCheckPermissions:
+    @pytest.mark.asyncio
+    async def test_all_permissions_present(self):
+        """No missing permissions when all queries succeed."""
+        from app.routers.setup import _check_permissions
+        client = MagicMock()
+        client.query = AsyncMock(return_value={"vms": {"domains": []}, "info": {"os": {}}})
+        client.start_container = AsyncMock(side_effect=UnraidAPIError("not found"))
+        missing_req, missing_opt = await _check_permissions(client)
+        assert missing_req == []
+        assert missing_opt == []
+
+    @pytest.mark.asyncio
+    async def test_missing_vms_permission(self):
+        """VMS:READ_ANY detected as missing required permission."""
+        from app.routers.setup import _check_permissions
+        client = MagicMock()
+        client.query = AsyncMock(side_effect=UnraidAuthenticationError("Forbidden resource"))
+        client.start_container = AsyncMock(side_effect=UnraidAPIError("not found"))
+        missing_req, missing_opt = await _check_permissions(client)
+        assert any(p[0] == "VMS:READ_ANY" for p in missing_req)
+
+    @pytest.mark.asyncio
+    async def test_missing_docker_write_is_optional(self):
+        """DOCKER:UPDATE_ANY detected as missing optional permission."""
+        from app.routers.setup import _check_permissions
+        client = MagicMock()
+        client.query = AsyncMock(return_value={"vms": {"domains": []}, "info": {"os": {}}})
+        client.start_container = AsyncMock(
+            side_effect=UnraidAuthenticationError("Forbidden resource")
+        )
+        missing_req, missing_opt = await _check_permissions(client)
+        assert missing_req == []
+        assert any(p[0] == "DOCKER:UPDATE_ANY" for p in missing_opt)

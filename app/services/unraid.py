@@ -4,7 +4,7 @@ import time
 from dataclasses import dataclass, field
 
 from unraid_api import UnraidClient
-from unraid_api.exceptions import UnraidAPIError
+from unraid_api.exceptions import UnraidAPIError, UnraidAuthenticationError
 
 logger = logging.getLogger(__name__)
 
@@ -231,6 +231,7 @@ class CachedData:
     system_metrics: SystemMetrics | None = None
     last_fetched: float = 0.0
     error: str | None = None
+    can_control_containers: bool = True
 
 
 def _resolve_webui_url(
@@ -294,6 +295,41 @@ class UnraidService:
         self._cache = CachedData()
         self._server_host = server_host  # configured hostname (e.g., "tower.lan")
         self._server_ip: str | None = None
+        self._can_control_containers: bool | None = None
+
+    @property
+    def can_control_containers(self) -> bool:
+        """Whether the API key has DOCKER:UPDATE_ANY permission.
+
+        Returns True (optimistic) until the first probe completes.
+        """
+        if self._can_control_containers is None:
+            return True
+        return self._can_control_containers
+
+    async def _probe_container_control(self) -> None:
+        """Probe whether the API key can control containers.
+
+        Tries to start a non-existent container ID. A permission error means
+        the key lacks DOCKER:UPDATE_ANY. Any other error (e.g., not found)
+        means the key has the permission but the container ID was invalid.
+        """
+        try:
+            await self.client.start_container("__probe__")
+            # Unlikely: succeeded somehow — has permission
+            self._can_control_containers = True
+        except UnraidAuthenticationError:
+            self._can_control_containers = False
+        except UnraidAPIError as e:
+            msg = str(e).lower()
+            if "forbidden" in msg or "unauthorized" in msg or "permission" in msg:
+                self._can_control_containers = False
+            else:
+                # Generic error (e.g., "not found") — has permission
+                self._can_control_containers = True
+        except Exception:
+            # Network or unexpected errors — assume has permission
+            self._can_control_containers = True
 
     def _cache_valid(self) -> bool:
         return (time.monotonic() - self._cache.last_fetched) < self.cache_ttl
@@ -320,6 +356,10 @@ class UnraidService:
     async def get_all_data(self) -> CachedData:
         if self._cache_valid():
             return self._cache
+
+        # Probe container control permission once
+        if self._can_control_containers is None:
+            await self._probe_container_control()
 
         errors: list[str] = []
         server_ip = await self._get_server_ip()
@@ -470,6 +510,7 @@ class UnraidService:
             system_metrics=system_metrics,
             last_fetched=time.monotonic(),
             error="; ".join(errors) if errors else None,
+            can_control_containers=self.can_control_containers,
         )
         return self._cache
 
@@ -492,4 +533,11 @@ class UnraidService:
         return result
 
     async def test_connection(self) -> bool:
-        return await self.client.test_connection()
+        """Test connection using a query compatible with minimal permissions.
+
+        The library's client.test_connection() queries ``{ online }`` which
+        requires broad permissions.  We query docker containers instead,
+        which only needs DOCKER:READ_ANY.
+        """
+        result = await self.client.query("query { docker { containers { id } } }")
+        return "docker" in result

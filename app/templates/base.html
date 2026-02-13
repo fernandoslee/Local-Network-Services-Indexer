@@ -25,12 +25,14 @@
             {% block top_bar_stats %}{% endblock %}
         </div>
         <div class="top-bar-right">
+            {% block connection_poll %}
             <span id="connection-status"
                   hx-get="/api/health"
                   hx-trigger="every 30s"
                   hx-swap="innerHTML">
                 {% block header_status %}{% endblock %}
             </span>
+            {% endblock %}
             {% block nav_icons %}
             <a href="/settings" class="nav-icon" title="Settings"><svg class="icon"><use href="#i-settings"/></svg></a>
             {% endblock %}

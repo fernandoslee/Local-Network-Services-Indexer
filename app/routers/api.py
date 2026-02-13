@@ -28,6 +28,7 @@ async def containers_partial(
         "request": request,
         "containers": data.containers,
         "error": data.error,
+        "can_control": data.can_control_containers,
     })
 
 
@@ -92,6 +93,7 @@ async def _container_action_response(
         "request": request,
         "containers": data.containers,
         "error": data.error,
+        "can_control": service.can_control_containers,
     })
 
 

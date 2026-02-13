@@ -319,6 +319,17 @@
     border-color: #8b5cf6;
 }
 
+.action-icon.disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.action-icon.disabled:hover {
+    border-color: var(--pico-muted-border-color);
+    color: inherit;
+    background: transparent;
+}
+
 .actions-cell {
     white-space: nowrap;
     width: 1%;

@@ -5,6 +5,7 @@ import secrets
 import bcrypt
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from unraid_api.exceptions import UnraidAPIError, UnraidAuthenticationError
 
 from app.config import get_settings
 from app.main import templates
@@ -19,6 +20,52 @@ MAX_PASSWORD_LENGTH = 128
 
 # Hostname or IP (with optional port), no schemes or paths
 _HOST_PATTERN = re.compile(r"^[a-zA-Z0-9._-]+(:\d+)?$")
+
+
+def _is_permission_error(exc: Exception) -> bool:
+    """Check if an exception indicates a permission/auth error."""
+    if isinstance(exc, UnraidAuthenticationError):
+        return True
+    msg = str(exc).lower()
+    return "forbidden" in msg or "unauthorized" in msg or "permission" in msg
+
+
+async def _check_permissions(client) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    """Probe API key permissions after a successful connection.
+
+    Returns (missing_required, missing_optional) where each is a list
+    of (permission_name, description) tuples.
+    DOCKER:READ_ANY is already verified by the connection test query.
+    """
+    missing_required: list[tuple[str, str]] = []
+    missing_optional: list[tuple[str, str]] = []
+
+    # VMS:READ_ANY
+    try:
+        await client.query("query { vms { domains { id } } }")
+    except Exception as e:
+        if _is_permission_error(e):
+            missing_required.append(("VMS:READ_ANY", "List VMs and state"))
+
+    # INFO:READ_ANY
+    try:
+        await client.query("query { info { os { hostname } } }")
+    except Exception as e:
+        if _is_permission_error(e):
+            missing_required.append(("INFO:READ_ANY", "System info and metrics"))
+
+    # DOCKER:UPDATE_ANY (optional)
+    try:
+        await client.start_container("__probe__")
+    except Exception as e:
+        if _is_permission_error(e):
+            missing_optional.append((
+                "DOCKER:UPDATE_ANY",
+                "Start, stop, and restart containers from the dashboard. "
+                "Without this permission, control buttons will be greyed out.",
+            ))
+
+    return missing_required, missing_optional
 
 
 def _validate_host(host: str) -> str | None:
@@ -164,13 +211,20 @@ async def setup_submit(
         })
 
     error = None
+    missing_required: list[tuple[str, str]] = []
+    missing_optional: list[tuple[str, str]] = []
     try:
         async with UnraidClient(host, api_key, verify_ssl=verify_ssl) as client:
-            connected = await client.test_connection()
-            if not connected:
+            # Use a lightweight docker query instead of client.test_connection()
+            # which queries { online } and requires broader permissions
+            result = await client.query("query { docker { containers { id } } }")
+            if "docker" not in result:
                 error = "Connection test failed. Check host and API key."
+            else:
+                # Connection works — check all permissions
+                missing_required, missing_optional = await _check_permissions(client)
     except UnraidAuthenticationError:
-        error = "Authentication failed. Check your API key (requires ADMIN role)."
+        error = "Authentication failed. Check your API key permissions."
     except UnraidSSLError:
         error = "SSL certificate error. Try unchecking 'Verify SSL certificate'."
     except UnraidConnectionError as e:
@@ -187,6 +241,17 @@ async def setup_submit(
             "error": error,
             "host": host,
             "api_key": "",  # Don't echo API key back to template
+        })
+
+    if missing_required:
+        perm_list = ", ".join(p[0] for p in missing_required)
+        return templates.TemplateResponse("setup.html", {
+            "request": request,
+            "step": 2,
+            "error": f"API key is missing required permissions: {perm_list}. "
+                     "Please update the key in Unraid API settings.",
+            "host": host,
+            "api_key": "",
         })
 
     # Save configuration (preserves any existing auth settings)
@@ -220,5 +285,13 @@ async def setup_submit(
             new_client, new_settings.cache_ttl_seconds, server_host=host
         )
         logger.info("Connected to Unraid at %s via setup", host)
+
+    # If optional permissions are missing, show success page with warnings
+    if missing_optional:
+        return templates.TemplateResponse("setup.html", {
+            "request": request,
+            "step": 3,
+            "warnings": missing_optional,
+        })
 
     return RedirectResponse(url="/", status_code=302)

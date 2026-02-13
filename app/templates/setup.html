@@ -2,6 +2,7 @@
 
 {% block title %}Setup{% endblock %}
 
+{% block connection_poll %}{% endblock %}
 {% block nav_icons %}{% endblock %}
 {% block nav_user %}{% endblock %}
 
@@ -9,9 +10,9 @@
 <article>
     <header>
         <div class="wizard-progress">
-            <span class="step {% if step == 1 %}active{% else %}complete{% endif %}">1. Account</span>
+            <span class="step {% if step == 1 %}active{% elif step >= 2 %}complete{% endif %}">1. Account</span>
             <span class="separator">&rarr;</span>
-            <span class="step {% if step == 2 %}active{% endif %}">2. Server</span>
+            <span class="step {% if step == 2 %}active{% elif step >= 3 %}complete{% endif %}">2. Server</span>
         </div>
     </header>
 
@@ -42,7 +43,7 @@
     <form method="post" action="/setup">
         <label for="host">Unraid Server Address
             <input type="text" id="host" name="host" value="{{ host }}"
-                   placeholder="tower.local or 192.168.1.100" required autofocus>
+                   placeholder="192.168.1.100 (use IP, not .local)" required autofocus>
         </label>
         <label for="api_key">API Key
             <input type="password" id="api_key" name="api_key" value="{{ api_key }}"
@@ -55,8 +56,23 @@
         <button type="submit">Complete Setup</button>
     </form>
     <footer>
-        <small>Create an API key in Unraid: Settings &rarr; Management Access &rarr; API Keys (ADMIN role required).</small>
+        <small>Create an API key in Unraid: Settings &rarr; Management Access &rarr; API Keys.</small>
     </footer>
+    {% elif step == 3 %}
+    <h2>Setup Complete</h2>
+    <p>Connected to your Unraid server successfully.</p>
+    {% if warnings %}
+    <div class="error-banner" style="border-left-color: #eab308;">
+        <p><strong>Optional permissions missing:</strong></p>
+        <ul>
+            {% for perm, desc in warnings %}
+            <li><code>{{ perm }}</code> &mdash; {{ desc }}</li>
+            {% endfor %}
+        </ul>
+        <p class="dimmed">You can add these permissions later in Unraid's API key settings.</p>
+    </div>
+    {% endif %}
+    <a href="/" role="button">Go to Dashboard</a>
     {% endif %}
 </article>
 {% endblock %}

@@ -67,7 +67,22 @@ docker run -d \
 On first launch, the setup wizard guides you through two steps:
 
 1. **Create account** — Choose a username and password (minimum 8 characters).
-2. **Connect to Unraid** — Enter your server hostname (e.g., `tower.local`) and an [API key](https://docs.unraid.net/unraid-os/manual/users/api-keys/) with Admin role.
+2. **Connect to Unraid** — Enter your server's IP address and an [API key](https://docs.unraid.net/unraid-os/manual/users/api-keys/).
+
+> **Note:** Use the server's IP address (e.g., `192.168.1.100`), not a `.local` hostname. mDNS/Bonjour names like `tower.local` do not resolve inside Docker containers.
+
+### API Key Permissions
+
+Create an API key in your Unraid settings with the following permissions:
+
+| Permission | Required | Used for |
+|---|---|---|
+| `DOCKER:READ_ANY` | Yes | List containers, status, labels, ports |
+| `VMS:READ_ANY` | Yes | List VMs and state |
+| `INFO:READ_ANY` | Yes | System info and metrics |
+| `DOCKER:UPDATE_ANY` | Optional | Start, stop, restart containers |
+
+An **Admin** role key works out of the box. If you create a custom key, the setup wizard will verify which permissions are available and warn you about any missing ones. Without `DOCKER:UPDATE_ANY`, the start/stop/restart buttons will be greyed out.
 
 ### Docker Socket (for container logs)
 
@@ -98,7 +113,7 @@ All configuration is managed through the Settings page in the web UI. Settings p
 
 - **Unraid 7.x** (GraphQL API is built-in since 7.0)
 - **Docker** on the host
-- An **API key** with Admin role — [how to create one](https://docs.unraid.net/unraid-os/manual/users/api-keys/)
+- An **API key** — Admin role or custom key with permissions listed above ([how to create one](https://docs.unraid.net/unraid-os/manual/users/api-keys/))
 
 ## Tech Stack
 

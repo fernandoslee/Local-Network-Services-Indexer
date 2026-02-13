@@ -109,6 +109,7 @@ def mock_service():
     service.start_container = AsyncMock(return_value={})
     service.stop_container = AsyncMock(return_value={})
     service.restart_container = AsyncMock(return_value={})
+    service.can_control_containers = True
     return service
 
 
