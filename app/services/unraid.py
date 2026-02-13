@@ -98,6 +98,7 @@ class UnraidService:
         self._server_host = server_host  # configured hostname (e.g., "tower.lan")
         self._server_ip: str | None = None
         self._can_control_containers: bool | None = None
+        self._can_control_vms: bool | None = None
 
     @property
     def can_control_containers(self) -> bool:
@@ -108,6 +109,37 @@ class UnraidService:
         if self._can_control_containers is None:
             return True
         return self._can_control_containers
+
+    @property
+    def can_control_vms(self) -> bool:
+        """Whether the API key has VMS:UPDATE_ANY permission.
+
+        Returns True (optimistic) until the first probe completes.
+        """
+        if self._can_control_vms is None:
+            return True
+        return self._can_control_vms
+
+    async def _probe_vm_control(self) -> None:
+        """Probe whether the API key can control VMs.
+
+        Tries to start a non-existent VM ID. A permission error means
+        the key lacks VMS:UPDATE_ANY. Any other error (e.g., not found)
+        means the key has the permission but the VM ID was invalid.
+        """
+        try:
+            await self.client.start_vm("__probe__")
+            self._can_control_vms = True
+        except UnraidAuthenticationError:
+            self._can_control_vms = False
+        except UnraidAPIError as e:
+            msg = str(e).lower()
+            if "forbidden" in msg or "unauthorized" in msg or "permission" in msg:
+                self._can_control_vms = False
+            else:
+                self._can_control_vms = True
+        except Exception:
+            self._can_control_vms = True
 
     async def _probe_container_control(self) -> None:
         """Probe whether the API key can control containers.
@@ -159,9 +191,11 @@ class UnraidService:
         if self._cache_valid():
             return self._cache
 
-        # Probe container control permission once
+        # Probe control permissions once
         if self._can_control_containers is None:
             await self._probe_container_control()
+        if self._can_control_vms is None:
+            await self._probe_vm_control()
 
         errors: list[str] = []
         server_ip = await self._get_server_ip()
@@ -296,6 +330,7 @@ class UnraidService:
             last_fetched=time.monotonic(),
             error="; ".join(errors) if errors else None,
             can_control_containers=self.can_control_containers,
+            can_control_vms=self.can_control_vms,
         )
         return self._cache
 
@@ -314,6 +349,26 @@ class UnraidService:
 
     async def restart_container(self, container_id: str) -> dict:
         result = await self.client.restart_container(container_id)
+        self.invalidate_cache()
+        return result
+
+    async def start_vm(self, vm_id: str) -> dict:
+        result = await self.client.start_vm(vm_id)
+        self.invalidate_cache()
+        return result
+
+    async def stop_vm(self, vm_id: str) -> dict:
+        result = await self.client.stop_vm(vm_id)
+        self.invalidate_cache()
+        return result
+
+    async def restart_vm(self, vm_id: str) -> dict:
+        result = await self.client.reboot_vm(vm_id)
+        self.invalidate_cache()
+        return result
+
+    async def force_stop_vm(self, vm_id: str) -> dict:
+        result = await self.client.force_stop_vm(vm_id)
         self.invalidate_cache()
         return result
 

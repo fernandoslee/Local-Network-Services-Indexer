@@ -68,6 +68,17 @@ async def check_permissions(client) -> tuple[list[tuple[str, str]], list[tuple[s
                 "Without this permission, control buttons will be greyed out.",
             ))
 
+    # VMS:UPDATE_ANY (optional)
+    try:
+        await client.start_vm("__probe__")
+    except Exception as e:
+        if _is_permission_error(e):
+            missing_optional.append((
+                "VMS:UPDATE_ANY",
+                "Start, stop, and restart VMs from the dashboard. "
+                "Without this permission, VM control buttons will be greyed out.",
+            ))
+
     return missing_required, missing_optional
 
 

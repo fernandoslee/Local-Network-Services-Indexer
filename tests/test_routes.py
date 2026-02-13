@@ -1,6 +1,6 @@
 """Integration tests for routes using FastAPI TestClient."""
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -177,6 +177,89 @@ async def test_container_restart(client, mock_service):
     resp = await client.post("/api/containers/restart?id=abc123:def456&view=cards")
     assert resp.status_code == 200
     mock_service.restart_container.assert_awaited_once_with("abc123:def456")
+
+
+# --- VM Actions ---
+
+@pytest.mark.asyncio
+async def test_vm_start(client, mock_service):
+    resp = await client.post("/api/vms/start?id=vm-1&view=cards")
+    assert resp.status_code == 200
+    mock_service.start_vm.assert_awaited_once_with("vm-1")
+
+@pytest.mark.asyncio
+async def test_vm_stop(client, mock_service):
+    resp = await client.post("/api/vms/stop?id=vm-1&view=cards")
+    assert resp.status_code == 200
+    mock_service.stop_vm.assert_awaited_once_with("vm-1")
+
+@pytest.mark.asyncio
+async def test_vm_restart(client, mock_service):
+    resp = await client.post("/api/vms/restart?id=vm-1&view=cards")
+    assert resp.status_code == 200
+    mock_service.restart_vm.assert_awaited_once_with("vm-1")
+
+@pytest.mark.asyncio
+async def test_vm_force_stop(client, mock_service):
+    resp = await client.post("/api/vms/force-stop?id=vm-1&view=cards")
+    assert resp.status_code == 200
+    mock_service.force_stop_vm.assert_awaited_once_with("vm-1")
+
+@pytest.mark.asyncio
+async def test_vm_action_not_connected(client_unconfigured):
+    resp = await client_unconfigured.post("/api/vms/start?id=vm-1")
+    assert resp.status_code == 503
+    assert "Not connected" in resp.text
+
+@pytest.mark.asyncio
+async def test_vm_start_error_still_returns_section(client, mock_service):
+    """VM action errors are logged but section HTML is still returned."""
+    mock_service.start_vm = AsyncMock(side_effect=Exception("API error"))
+    resp = await client.post("/api/vms/start?id=vm-1&view=cards")
+    assert resp.status_code == 200
+    assert "TestVM" in resp.text
+
+
+# --- VM Control Permission ---
+
+@pytest.mark.asyncio
+async def test_vms_cards_has_active_buttons_when_can_control(client):
+    """Card view buttons should have hx-post when can_control=True (mock VM is RUNNING)."""
+    resp = await client.get("/api/vms?view=cards")
+    assert resp.status_code == 200
+    assert 'hx-post="/api/vms/stop' in resp.text
+
+@pytest.mark.asyncio
+async def test_vms_compact_has_active_buttons_when_can_control(client):
+    """Compact view buttons should have hx-post when can_control=True (mock VM is RUNNING)."""
+    resp = await client.get("/api/vms?view=compact")
+    assert resp.status_code == 200
+    assert 'hx-post="/api/vms/stop' in resp.text
+
+@pytest.mark.asyncio
+async def test_vms_cards_has_disabled_buttons_when_no_control(mock_docker_service, configured_settings):
+    """Card view buttons should be disabled when can_control_vms=False."""
+    from unittest.mock import AsyncMock
+    from app.main import app
+    from tests.conftest import _patch_app_settings
+
+    service = AsyncMock()
+    service.get_all_data = AsyncMock(return_value=_make_cached_data(can_control_vms=False))
+    service.can_control_vms = False
+
+    patches = _patch_app_settings(app, configured_settings)
+    with patches[0], patches[1], patches[2], patches[3]:
+        app.state.unraid_client = MagicMock()
+        app.state.unraid_service = service
+        app.state.docker_service = mock_docker_service
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as c:
+            resp = await c.get("/api/vms?view=cards")
+            assert resp.status_code == 200
+            assert "disabled" in resp.text
+            assert "VMS:UPDATE_ANY permission required" in resp.text
+            assert 'hx-post="/api/vms/stop' not in resp.text
 
 
 # --- Session Auth ---

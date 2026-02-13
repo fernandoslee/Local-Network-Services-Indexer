@@ -108,6 +108,7 @@
              hx-get="/api/vms?view={{ 'compact' if compact else 'cards' }}"
              hx-trigger="every 30s"
              hx-swap="innerHTML">
+            {% set can_control = can_control_vms %}
             {% if compact %}
             {% include "partials/vms_compact.html" %}
             {% else %}

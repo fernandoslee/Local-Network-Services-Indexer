@@ -6,7 +6,7 @@ import pytest
 
 from unraid_api.exceptions import UnraidAPIError, UnraidAuthenticationError
 
-from app.models import ContainerInfo, VmInfo
+from app.models import CachedData, ContainerInfo, VmInfo
 from app.services.unraid import (
     UnraidService,
     _resolve_webui_url,
@@ -258,10 +258,31 @@ class TestVmInfo:
         assert VmInfo(id="1", name="Test", state="RUNNING").is_running is True
         assert VmInfo(id="1", name="Test", state="SHUTOFF").is_running is False
 
+    def test_is_paused_true(self):
+        assert VmInfo(id="1", name="Test", state="PAUSED").is_paused is True
+
+    def test_is_paused_false_running(self):
+        assert VmInfo(id="1", name="Test", state="RUNNING").is_paused is False
+
+    def test_is_paused_false_shutoff(self):
+        assert VmInfo(id="1", name="Test", state="SHUTOFF").is_paused is False
+
     def test_sort_key(self):
         r = VmInfo(id="1", name="zzz", state="RUNNING")
         s = VmInfo(id="2", name="aaa", state="SHUTOFF")
         assert r.sort_key < s.sort_key
+
+
+# --- CachedData.can_control_vms ---
+
+class TestCachedDataVmControl:
+    def test_defaults_to_true(self):
+        data = CachedData()
+        assert data.can_control_vms is True
+
+    def test_can_be_set_false(self):
+        data = CachedData(can_control_vms=False)
+        assert data.can_control_vms is False
 
 
 # --- _resolve_webui_url ---
@@ -404,6 +425,64 @@ class TestProbeContainerControl:
         service = UnraidService(client)
         await service._probe_container_control()
         assert service.can_control_containers is False
+
+
+# --- _probe_vm_control ---
+
+class TestProbeVmControl:
+    @pytest.mark.asyncio
+    async def test_generic_api_error_means_has_permission(self):
+        """Non-permission API errors (e.g., 'not found') indicate the key has write access."""
+        client = MagicMock()
+        client.start_vm = AsyncMock(side_effect=UnraidAPIError("vm not found"))
+        service = UnraidService(client)
+        assert service._can_control_vms is None
+        await service._probe_vm_control()
+        assert service._can_control_vms is True
+
+    @pytest.mark.asyncio
+    async def test_auth_error_means_no_permission(self):
+        """UnraidAuthenticationError means the key lacks VMS:UPDATE_ANY."""
+        client = MagicMock()
+        client.start_vm = AsyncMock(side_effect=UnraidAuthenticationError("forbidden"))
+        service = UnraidService(client)
+        await service._probe_vm_control()
+        assert service._can_control_vms is False
+
+    @pytest.mark.asyncio
+    async def test_forbidden_message_means_no_permission(self):
+        """API error containing 'forbidden' in message means no permission."""
+        client = MagicMock()
+        client.start_vm = AsyncMock(
+            side_effect=UnraidAPIError("Forbidden resource (path: ['startVm'])")
+        )
+        service = UnraidService(client)
+        await service._probe_vm_control()
+        assert service._can_control_vms is False
+
+    @pytest.mark.asyncio
+    async def test_unexpected_error_assumes_permission(self):
+        """Unexpected errors (network, etc.) default to optimistic True."""
+        client = MagicMock()
+        client.start_vm = AsyncMock(side_effect=ConnectionError("timeout"))
+        service = UnraidService(client)
+        await service._probe_vm_control()
+        assert service._can_control_vms is True
+
+    def test_can_control_vms_property_optimistic_before_probe(self):
+        """Property returns True before probe runs."""
+        client = MagicMock()
+        service = UnraidService(client)
+        assert service.can_control_vms is True
+
+    @pytest.mark.asyncio
+    async def test_can_control_vms_property_after_probe_false(self):
+        """Property returns False after probe detects no permission."""
+        client = MagicMock()
+        client.start_vm = AsyncMock(side_effect=UnraidAuthenticationError("forbidden"))
+        service = UnraidService(client)
+        await service._probe_vm_control()
+        assert service.can_control_vms is False
 
 
 # --- check_permissions (connection) ---

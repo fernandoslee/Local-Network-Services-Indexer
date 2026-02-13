@@ -1,0 +1,51 @@
+{% macro vm_actions(vm, can_control, view) %}
+<span class="action-icons">
+    {% if vm.is_running %}
+        {% if can_control %}
+        <span class="action-icon action-stop" title="Stop"
+              hx-post="/api/vms/stop?id={{ vm.id | urlencode }}&view={{ view }}"
+              hx-target="#vms-section"
+              hx-swap="innerHTML"
+              hx-confirm="Stop {{ vm.name }}?"><svg class="icon"><use href="#i-stop"/></svg></span>
+        <span class="action-icon action-restart" title="Restart"
+              hx-post="/api/vms/restart?id={{ vm.id | urlencode }}&view={{ view }}"
+              hx-target="#vms-section"
+              hx-swap="innerHTML"
+              hx-confirm="Restart {{ vm.name }}?"><svg class="icon"><use href="#i-refresh"/></svg></span>
+        <span class="action-icon action-force-stop" title="Force Stop"
+              hx-post="/api/vms/force-stop?id={{ vm.id | urlencode }}&view={{ view }}"
+              hx-target="#vms-section"
+              hx-swap="innerHTML"
+              hx-confirm="Force stop {{ vm.name }}? This may cause data loss."><svg class="icon"><use href="#i-x"/></svg></span>
+        {% else %}
+        <span class="action-icon action-stop disabled" title="VMS:UPDATE_ANY permission required"><svg class="icon"><use href="#i-stop"/></svg></span>
+        <span class="action-icon action-restart disabled" title="VMS:UPDATE_ANY permission required"><svg class="icon"><use href="#i-refresh"/></svg></span>
+        <span class="action-icon action-force-stop disabled" title="VMS:UPDATE_ANY permission required"><svg class="icon"><use href="#i-x"/></svg></span>
+        {% endif %}
+    {% elif vm.is_paused %}
+        {% if can_control %}
+        <span class="action-icon action-start" title="Resume"
+              hx-post="/api/vms/start?id={{ vm.id | urlencode }}&view={{ view }}"
+              hx-target="#vms-section"
+              hx-swap="innerHTML"><svg class="icon"><use href="#i-play"/></svg></span>
+        <span class="action-icon action-stop" title="Stop"
+              hx-post="/api/vms/stop?id={{ vm.id | urlencode }}&view={{ view }}"
+              hx-target="#vms-section"
+              hx-swap="innerHTML"
+              hx-confirm="Stop {{ vm.name }}?"><svg class="icon"><use href="#i-stop"/></svg></span>
+        {% else %}
+        <span class="action-icon action-start disabled" title="VMS:UPDATE_ANY permission required"><svg class="icon"><use href="#i-play"/></svg></span>
+        <span class="action-icon action-stop disabled" title="VMS:UPDATE_ANY permission required"><svg class="icon"><use href="#i-stop"/></svg></span>
+        {% endif %}
+    {% else %}
+        {% if can_control %}
+        <span class="action-icon action-start" title="Start"
+              hx-post="/api/vms/start?id={{ vm.id | urlencode }}&view={{ view }}"
+              hx-target="#vms-section"
+              hx-swap="innerHTML"><svg class="icon"><use href="#i-play"/></svg></span>
+        {% else %}
+        <span class="action-icon action-start disabled" title="VMS:UPDATE_ANY permission required"><svg class="icon"><use href="#i-play"/></svg></span>
+        {% endif %}
+    {% endif %}
+</span>
+{% endmacro %}

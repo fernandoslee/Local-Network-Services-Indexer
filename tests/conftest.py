@@ -108,6 +108,11 @@ def mock_service():
     service.stop_container = AsyncMock(return_value={})
     service.restart_container = AsyncMock(return_value={})
     service.can_control_containers = True
+    service.start_vm = AsyncMock(return_value={})
+    service.stop_vm = AsyncMock(return_value={})
+    service.restart_vm = AsyncMock(return_value={})
+    service.force_stop_vm = AsyncMock(return_value={})
+    service.can_control_vms = True
     return service
 
 

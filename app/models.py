@@ -132,6 +132,10 @@ class VmInfo:
         return self.state == "RUNNING"
 
     @property
+    def is_paused(self) -> bool:
+        return self.state == "PAUSED"
+
+    @property
     def sort_key(self) -> tuple:
         return (_STATE_SORT_ORDER.get(self.state, 9), self.name.lower())
 
@@ -182,3 +186,4 @@ class CachedData:
     last_fetched: float = 0.0
     error: str | None = None
     can_control_containers: bool = True
+    can_control_vms: bool = True

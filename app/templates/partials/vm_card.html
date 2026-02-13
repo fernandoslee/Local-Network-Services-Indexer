@@ -1,3 +1,4 @@
+{% from "partials/vm_actions.html" import vm_actions %}
 <article class="service-card" data-running="{{ 'true' if vm.is_running else 'false' }}">
     <header>
         <div class="service-card-header">
@@ -10,4 +11,7 @@
     <div class="service-card-body">
         <span class="status-badge status-{{ vm.state_lower }}">{{ vm.state }}</span>
     </div>
+    <footer class="service-card-footer">
+        {{ vm_actions(vm, can_control, 'cards') }}
+    </footer>
 </article>

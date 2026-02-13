@@ -1,9 +1,11 @@
+{% from "partials/vm_actions.html" import vm_actions %}
 <table class="compact-table" role="grid">
     <thead>
         <tr>
             <th></th>
             <th>Name</th>
             <th>Status</th>
+            <th class="actions-cell">Actions</th>
         </tr>
     </thead>
     <tbody>
@@ -14,9 +16,10 @@
             </td>
             <td><strong>{{ vm.name }}</strong></td>
             <td><span class="status-badge status-{{ vm.state_lower }}">{{ vm.state }}</span></td>
+            <td class="actions-cell">{{ vm_actions(vm, can_control, 'compact') }}</td>
         </tr>
         {% else %}
-        <tr><td colspan="3">No virtual machines found.</td></tr>
+        <tr><td colspan="4">No virtual machines found.</td></tr>
         {% endfor %}
     </tbody>
 </table>

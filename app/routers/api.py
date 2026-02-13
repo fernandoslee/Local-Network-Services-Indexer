@@ -47,6 +47,7 @@ async def vms_partial(
         "request": request,
         "vms": data.vms,
         "error": data.error,
+        "can_control": data.can_control_vms,
     })
 
 
@@ -128,6 +129,86 @@ async def container_restart(
     except Exception as e:
         logger.error("Failed to restart container %s: %s", id, e)
     return await _container_action_response(request, view, service)
+
+
+async def _vm_action_response(
+    request: Request,
+    view: str,
+    service: UnraidService,
+) -> HTMLResponse:
+    data = await service.get_all_data()
+    compact = view == "compact"
+    template = "partials/vms_compact.html" if compact else "partials/vms_section.html"
+    return templates.TemplateResponse(template, {
+        "request": request,
+        "vms": data.vms,
+        "error": data.error,
+        "can_control": service.can_control_vms,
+    })
+
+
+@router.post("/vms/start", response_class=HTMLResponse)
+async def vm_start(
+    request: Request,
+    id: str,
+    view: str = "cards",
+    service: UnraidService | None = Depends(get_unraid_service),
+):
+    if service is None:
+        return HTMLResponse("<p>Not connected.</p>", status_code=503)
+    try:
+        await service.start_vm(id)
+    except Exception as e:
+        logger.error("Failed to start VM %s: %s", id, e)
+    return await _vm_action_response(request, view, service)
+
+
+@router.post("/vms/stop", response_class=HTMLResponse)
+async def vm_stop(
+    request: Request,
+    id: str,
+    view: str = "cards",
+    service: UnraidService | None = Depends(get_unraid_service),
+):
+    if service is None:
+        return HTMLResponse("<p>Not connected.</p>", status_code=503)
+    try:
+        await service.stop_vm(id)
+    except Exception as e:
+        logger.error("Failed to stop VM %s: %s", id, e)
+    return await _vm_action_response(request, view, service)
+
+
+@router.post("/vms/restart", response_class=HTMLResponse)
+async def vm_restart(
+    request: Request,
+    id: str,
+    view: str = "cards",
+    service: UnraidService | None = Depends(get_unraid_service),
+):
+    if service is None:
+        return HTMLResponse("<p>Not connected.</p>", status_code=503)
+    try:
+        await service.restart_vm(id)
+    except Exception as e:
+        logger.error("Failed to restart VM %s: %s", id, e)
+    return await _vm_action_response(request, view, service)
+
+
+@router.post("/vms/force-stop", response_class=HTMLResponse)
+async def vm_force_stop(
+    request: Request,
+    id: str,
+    view: str = "cards",
+    service: UnraidService | None = Depends(get_unraid_service),
+):
+    if service is None:
+        return HTMLResponse("<p>Not connected.</p>", status_code=503)
+    try:
+        await service.force_stop_vm(id)
+    except Exception as e:
+        logger.error("Failed to force stop VM %s: %s", id, e)
+    return await _vm_action_response(request, view, service)
 
 
 @router.get("/containers/logs", response_class=HTMLResponse)
