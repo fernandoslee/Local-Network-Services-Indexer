@@ -1,3 +1,4 @@
+{% from "partials/container_actions.html" import container_actions %}
 <table class="compact-table" role="grid" id="compact-containers">
     <thead>
         <tr>
@@ -42,50 +43,7 @@
             <td data-col="uptime"><small class="dimmed">{{ container.display_status }}</small></td>
             <td data-col="image" class="hide-narrow"><small class="dimmed">{{ container.image | truncate(50) }}</small></td>
             <td class="actions-cell">
-                <span class="action-icons">
-                    <span class="action-icon action-logs" title="Logs"
-                          onclick="showLogs('{{ container.id | urlencode }}', '{{ container.name | e }}')"><svg class="icon"><use href="#i-terminal"/></svg></span>
-                    {% if container.web_ui_url %}
-                    <a href="{{ container.web_ui_url }}" target="_blank" rel="noopener"
-                       class="action-icon action-link" title="Open web UI"><svg class="icon"><use href="#i-external-link"/></svg></a>
-                    {% endif %}
-                    {% if container.is_running %}
-                        {% if can_control %}
-                        <span class="action-icon action-stop" title="Stop"
-                              hx-post="/api/containers/stop?id={{ container.id | urlencode }}&view=compact"
-                              hx-target="#containers-section"
-                              hx-swap="innerHTML"
-                              hx-confirm="Stop {{ container.name }}?"><svg class="icon"><use href="#i-stop"/></svg></span>
-                        <span class="action-icon action-restart" title="Restart"
-                              hx-post="/api/containers/restart?id={{ container.id | urlencode }}&view=compact"
-                              hx-target="#containers-section"
-                              hx-swap="innerHTML"
-                              hx-confirm="Restart {{ container.name }}?"><svg class="icon"><use href="#i-refresh"/></svg></span>
-                        {% else %}
-                        <span class="action-icon action-stop disabled" title="DOCKER:UPDATE_ANY permission required"><svg class="icon"><use href="#i-stop"/></svg></span>
-                        <span class="action-icon action-restart disabled" title="DOCKER:UPDATE_ANY permission required"><svg class="icon"><use href="#i-refresh"/></svg></span>
-                        {% endif %}
-                    {% elif container.is_restarting %}
-                        {% if can_control %}
-                        <span class="action-icon action-stop" title="Stop"
-                              hx-post="/api/containers/stop?id={{ container.id | urlencode }}&view=compact"
-                              hx-target="#containers-section"
-                              hx-swap="innerHTML"
-                              hx-confirm="Stop {{ container.name }}?"><svg class="icon"><use href="#i-stop"/></svg></span>
-                        {% else %}
-                        <span class="action-icon action-stop disabled" title="DOCKER:UPDATE_ANY permission required"><svg class="icon"><use href="#i-stop"/></svg></span>
-                        {% endif %}
-                    {% else %}
-                        {% if can_control %}
-                        <span class="action-icon action-start" title="Start"
-                              hx-post="/api/containers/start?id={{ container.id | urlencode }}&view=compact"
-                              hx-target="#containers-section"
-                              hx-swap="innerHTML"><svg class="icon"><use href="#i-play"/></svg></span>
-                        {% else %}
-                        <span class="action-icon action-start disabled" title="DOCKER:UPDATE_ANY permission required"><svg class="icon"><use href="#i-play"/></svg></span>
-                        {% endif %}
-                    {% endif %}
-                </span>
+                {{ container_actions(container, can_control, "compact") }}
             </td>
         </tr>
         {% else %}

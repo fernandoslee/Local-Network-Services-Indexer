@@ -1,5 +1,6 @@
 """Read and write the persistent .env configuration file."""
 
+import os
 import tempfile
 from pathlib import Path
 
@@ -38,6 +39,7 @@ def write_env(path: Path, values: dict[str, str]) -> None:
 
     # Atomic write: write to temp file, set permissions, then rename
     fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    os.close(fd)
     try:
         tmp = Path(tmp_path)
         tmp.write_text(content)

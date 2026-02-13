@@ -1,4 +1,3 @@
-import hmac
 import logging
 import secrets
 import time
@@ -8,14 +7,13 @@ import bcrypt
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from app.auth_utils import MAX_PASSWORD_LENGTH, verify_password
 from app.config import get_settings
 from app.main import templates
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-MAX_PASSWORD_LENGTH = 128
 
 # Simple in-memory rate limiter: {ip: [timestamp, ...]}
 _login_attempts: dict[str, list[float]] = defaultdict(list)
@@ -34,14 +32,6 @@ def _is_rate_limited(ip: str) -> bool:
 
 def _record_attempt(ip: str) -> None:
     _login_attempts[ip].append(time.monotonic())
-
-
-def _verify_password(plain: str, hashed: str) -> bool:
-    """Verify a password against a hash. Handles both bcrypt and legacy plaintext."""
-    if hashed.startswith("$2b$") or hashed.startswith("$2a$"):
-        return bcrypt.checkpw(plain.encode(), hashed.encode())
-    # Legacy plaintext — constant-time comparison
-    return hmac.compare_digest(plain, hashed)
 
 
 @router.get("/login", response_class=HTMLResponse)
@@ -85,7 +75,7 @@ async def login_submit(
     # Constant-time username comparison + password verification
     # Always run both to prevent timing-based user enumeration
     username_match = secrets.compare_digest(username, settings.auth_username)
-    password_match = _verify_password(password, settings.auth_password)
+    password_match = verify_password(password, settings.auth_password)
     valid = username_match and password_match
 
     if not valid:

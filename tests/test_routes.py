@@ -438,3 +438,131 @@ async def test_containers_compact_has_disabled_buttons_when_no_control(mock_dock
             assert "disabled" in resp.text
             assert "DOCKER:UPDATE_ANY permission required" in resp.text
             assert 'hx-post="/api/containers/stop' not in resp.text
+
+
+# --- Rate Limiting ---
+
+@pytest.mark.asyncio
+async def test_login_rate_limiting(client_with_auth):
+    """Exceeding rate limit returns error without checking credentials."""
+    import time as _time
+    from app.routers.auth import _login_attempts, _RATE_LIMIT_MAX
+    # ASGITransport default client is ("127.0.0.1", 123)
+    _login_attempts["127.0.0.1"] = [_time.monotonic()] * (_RATE_LIMIT_MAX + 1)
+    try:
+        resp = await client_with_auth.post("/login", data={
+            "username": "admin", "password": TEST_PASSWORD,
+        })
+        assert resp.status_code == 200
+        assert "Too many login attempts" in resp.text
+    finally:
+        _login_attempts.pop("127.0.0.1", None)
+
+
+@pytest.mark.asyncio
+async def test_login_max_password_length(client_with_auth):
+    """Password exceeding MAX_PASSWORD_LENGTH rejected (bcrypt DoS prevention)."""
+    resp = await client_with_auth.post("/login", data={
+        "username": "admin", "password": "a" * 200,
+    })
+    assert resp.status_code == 200
+    assert "Invalid" in resp.text
+
+
+@pytest.mark.asyncio
+async def test_login_when_auth_not_configured(client):
+    """Login redirects to dashboard when auth is not configured."""
+    resp = await client.post("/login", data={
+        "username": "admin", "password": "whatever",
+    }, follow_redirects=False)
+    assert resp.status_code == 302
+    assert resp.headers["location"] == "/"
+
+
+# --- Middleware ---
+
+@pytest.mark.asyncio
+async def test_trailing_slash_normalization(client_with_auth):
+    """Trailing slash should not bypass auth middleware."""
+    resp = await client_with_auth.get("/settings/", follow_redirects=False)
+    assert resp.status_code == 302
+    assert "/login" in resp.headers["location"]
+
+
+@pytest.mark.asyncio
+async def test_setup_accessible_during_step2(client_auth_only):
+    """Setup paths should be accessible when auth is configured but Unraid is not."""
+    resp = await client_auth_only.get("/setup")
+    assert resp.status_code == 200
+    assert "Connect to Unraid" in resp.text
+
+
+# --- Settings Auth Edge Cases ---
+
+@pytest.mark.asyncio
+async def test_settings_auth_password_max_length(client_with_auth):
+    """POST /settings/auth should enforce maximum password length."""
+    await client_with_auth.post("/login", data={
+        "username": "admin", "password": TEST_PASSWORD,
+    })
+    resp = await client_with_auth.post("/settings/auth", data={
+        "current_password": TEST_PASSWORD,
+        "auth_enabled": "on",
+        "auth_username": "admin",
+        "auth_password": "a" * 200,
+        "session_max_age": "86400",
+    })
+    assert resp.status_code == 200
+    assert "at most 128" in resp.text
+
+
+@pytest.mark.asyncio
+async def test_settings_auth_preserves_password_when_empty(client_with_auth):
+    """Enabling auth with empty password preserves existing hash."""
+    await client_with_auth.post("/login", data={
+        "username": "admin", "password": TEST_PASSWORD,
+    })
+    resp = await client_with_auth.post("/settings/auth", data={
+        "current_password": TEST_PASSWORD,
+        "auth_enabled": "on",
+        "auth_username": "admin",
+        "auth_password": "",
+        "session_max_age": "86400",
+    })
+    assert resp.status_code == 200
+    assert "saved" in resp.text.lower()
+
+
+# --- Setup Host Validation ---
+
+@pytest.mark.asyncio
+async def test_setup_host_validation_empty(client_auth_only):
+    """Setup rejects whitespace-only host."""
+    resp = await client_auth_only.post("/setup", data={
+        "host": "   ",
+        "api_key": "test-key",
+    })
+    assert resp.status_code == 200
+    assert "required" in resp.text.lower()
+
+
+@pytest.mark.asyncio
+async def test_setup_host_validation_scheme(client_auth_only):
+    """Setup rejects host with scheme (SSRF prevention)."""
+    resp = await client_auth_only.post("/setup", data={
+        "host": "http://tower.local",
+        "api_key": "test-key",
+    })
+    assert resp.status_code == 200
+    assert "Invalid" in resp.text or "hostname or IP" in resp.text
+
+
+@pytest.mark.asyncio
+async def test_setup_api_key_too_long(client_auth_only):
+    """Setup rejects overly long API key."""
+    resp = await client_auth_only.post("/setup", data={
+        "host": "tower.local",
+        "api_key": "a" * 300,
+    })
+    assert resp.status_code == 200
+    assert "too long" in resp.text.lower()

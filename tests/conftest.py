@@ -5,7 +5,7 @@ import bcrypt
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.services.unraid import (
+from app.models import (
     CachedData,
     ContainerInfo,
     PluginInfo,

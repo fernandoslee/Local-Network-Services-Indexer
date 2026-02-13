@@ -84,6 +84,14 @@ Create an API key in your Unraid settings with the following permissions:
 
 An **Admin** role key works out of the box. If you create a custom key, the setup wizard will verify which permissions are available and warn you about any missing ones. Without `DOCKER:UPDATE_ANY`, the start/stop/restart buttons will be greyed out.
 
+You can create a pre-configured API key by navigating to:
+
+```
+http://<your-server-ip>/Settings/ManagementAccess/ApiKeys/New?name=servicelens+api+key&scopes=info%2Bvms%3Aread_any%2Cdocker%3Aread_any%2Bupdate_any
+```
+
+This template includes all required permissions plus `DOCKER:UPDATE_ANY` for container control. You can also create the key manually in **Settings > Management Access > API Keys**.
+
 ### Docker Socket (for container logs)
 
 Mount the Docker socket as a read-only volume to enable container log viewing:
@@ -134,7 +142,7 @@ pip install -r requirements.txt
 # Run locally
 UNRAID_HOST=tower.local UNRAID_API_KEY=<key> uvicorn app.main:app --port 8080
 
-# Run tests (136 tests)
+# Run tests (191 tests)
 python -m pytest tests/ -q
 ```
 

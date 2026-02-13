@@ -6,11 +6,9 @@ import pytest
 
 from unraid_api.exceptions import UnraidAPIError, UnraidAuthenticationError
 
+from app.models import ContainerInfo, PluginInfo, VmInfo
 from app.services.unraid import (
-    ContainerInfo,
-    PluginInfo,
     UnraidService,
-    VmInfo,
     _humanize_plugin_name,
     _resolve_webui_url,
 )
@@ -425,39 +423,233 @@ class TestProbeContainerControl:
         assert service.can_control_containers is False
 
 
-# --- _check_permissions (setup) ---
+# --- check_permissions (connection) ---
 
 class TestCheckPermissions:
     @pytest.mark.asyncio
     async def test_all_permissions_present(self):
         """No missing permissions when all queries succeed."""
-        from app.routers.setup import _check_permissions
+        from app.services.connection import check_permissions
         client = MagicMock()
         client.query = AsyncMock(return_value={"vms": {"domains": []}, "info": {"os": {}}})
         client.start_container = AsyncMock(side_effect=UnraidAPIError("not found"))
-        missing_req, missing_opt = await _check_permissions(client)
+        missing_req, missing_opt = await check_permissions(client)
         assert missing_req == []
         assert missing_opt == []
 
     @pytest.mark.asyncio
     async def test_missing_vms_permission(self):
         """VMS:READ_ANY detected as missing required permission."""
-        from app.routers.setup import _check_permissions
+        from app.services.connection import check_permissions
         client = MagicMock()
         client.query = AsyncMock(side_effect=UnraidAuthenticationError("Forbidden resource"))
         client.start_container = AsyncMock(side_effect=UnraidAPIError("not found"))
-        missing_req, missing_opt = await _check_permissions(client)
+        missing_req, missing_opt = await check_permissions(client)
         assert any(p[0] == "VMS:READ_ANY" for p in missing_req)
 
     @pytest.mark.asyncio
     async def test_missing_docker_write_is_optional(self):
         """DOCKER:UPDATE_ANY detected as missing optional permission."""
-        from app.routers.setup import _check_permissions
+        from app.services.connection import check_permissions
         client = MagicMock()
         client.query = AsyncMock(return_value={"vms": {"domains": []}, "info": {"os": {}}})
         client.start_container = AsyncMock(
             side_effect=UnraidAuthenticationError("Forbidden resource")
         )
-        missing_req, missing_opt = await _check_permissions(client)
+        missing_req, missing_opt = await check_permissions(client)
         assert missing_req == []
         assert any(p[0] == "DOCKER:UPDATE_ANY" for p in missing_opt)
+
+
+# --- verify_password (auth_utils) ---
+
+class TestVerifyPassword:
+    def test_bcrypt_correct(self):
+        import bcrypt as _bc
+        from app.auth_utils import verify_password
+        hashed = _bc.hashpw(b"mypassword", _bc.gensalt()).decode()
+        assert verify_password("mypassword", hashed) is True
+
+    def test_bcrypt_wrong(self):
+        import bcrypt as _bc
+        from app.auth_utils import verify_password
+        hashed = _bc.hashpw(b"mypassword", _bc.gensalt()).decode()
+        assert verify_password("wrongpassword", hashed) is False
+
+    def test_plaintext_correct(self):
+        from app.auth_utils import verify_password
+        assert verify_password("secret", "secret") is True
+
+    def test_plaintext_wrong(self):
+        from app.auth_utils import verify_password
+        assert verify_password("wrong", "secret") is False
+
+    def test_bcrypt_2a_prefix(self):
+        """Handles $2a$ prefix (older bcrypt versions)."""
+        import bcrypt as _bc
+        from app.auth_utils import verify_password
+        hashed = _bc.hashpw(b"test", _bc.gensalt()).decode()
+        # Replace $2b$ with $2a$ — bcrypt accepts both
+        hashed_2a = hashed.replace("$2b$", "$2a$", 1)
+        assert verify_password("test", hashed_2a) is True
+
+
+# --- validate_host (connection) ---
+
+class TestValidateHost:
+    def test_valid_hostname(self):
+        from app.services.connection import validate_host
+        assert validate_host("tower.local") is None
+
+    def test_valid_ip(self):
+        from app.services.connection import validate_host
+        assert validate_host("192.168.1.100") is None
+
+    def test_valid_ip_with_port(self):
+        from app.services.connection import validate_host
+        assert validate_host("192.168.1.100:8443") is None
+
+    def test_empty(self):
+        from app.services.connection import validate_host
+        assert validate_host("") is not None
+        assert "required" in validate_host("").lower()
+
+    def test_whitespace_only(self):
+        from app.services.connection import validate_host
+        assert validate_host("   ") is not None
+
+    def test_too_long(self):
+        from app.services.connection import validate_host
+        assert validate_host("a" * 254) is not None
+        assert "too long" in validate_host("a" * 254).lower()
+
+    def test_scheme_rejected(self):
+        from app.services.connection import validate_host
+        assert validate_host("http://tower.local") is not None
+
+    def test_path_rejected(self):
+        from app.services.connection import validate_host
+        assert validate_host("tower.local/graphql") is not None
+
+    def test_whitespace_stripped(self):
+        from app.services.connection import validate_host
+        assert validate_host("  tower.local  ") is None
+
+
+# --- _is_permission_error (connection) ---
+
+class TestIsPermissionError:
+    def test_authentication_error(self):
+        from app.services.connection import _is_permission_error
+        assert _is_permission_error(UnraidAuthenticationError("test")) is True
+
+    def test_forbidden_in_message(self):
+        from app.services.connection import _is_permission_error
+        assert _is_permission_error(UnraidAPIError("Forbidden resource")) is True
+
+    def test_unauthorized_in_message(self):
+        from app.services.connection import _is_permission_error
+        assert _is_permission_error(UnraidAPIError("Unauthorized access")) is True
+
+    def test_permission_in_message(self):
+        from app.services.connection import _is_permission_error
+        assert _is_permission_error(UnraidAPIError("Permission denied")) is True
+
+    def test_generic_error_not_permission(self):
+        from app.services.connection import _is_permission_error
+        assert _is_permission_error(UnraidAPIError("container not found")) is False
+
+    def test_non_api_error(self):
+        from app.services.connection import _is_permission_error
+        assert _is_permission_error(ConnectionError("timeout")) is False
+
+
+# --- _mask_key (settings) ---
+
+class TestMaskKey:
+    def test_normal_key(self):
+        from app.routers.settings import _mask_key
+        masked = _mask_key("abcdefgh12345678")
+        assert masked.endswith("5678")
+        assert "\u2022" in masked
+
+    def test_short_key(self):
+        from app.routers.settings import _mask_key
+        assert _mask_key("abc") == "abc"
+
+    def test_exactly_four(self):
+        from app.routers.settings import _mask_key
+        assert _mask_key("abcd") == "abcd"
+
+    def test_five_chars(self):
+        from app.routers.settings import _mask_key
+        masked = _mask_key("abcde")
+        assert masked.endswith("bcde")
+        assert len(masked) == 12  # 8 bullets + 4 chars
+
+
+# --- env_file preserves existing keys ---
+
+class TestEnvFilePreserve:
+    def test_preserves_existing_keys(self, tmp_path):
+        from app.services.env_file import read_env, write_env
+        env_path = tmp_path / ".env"
+        write_env(env_path, {"KEY1": "value1", "KEY2": "value2"})
+        write_env(env_path, {"KEY2": "updated"})
+        result = read_env(env_path)
+        assert result["KEY1"] == "value1"
+        assert result["KEY2"] == "updated"
+
+    def test_read_empty_file(self, tmp_path):
+        from app.services.env_file import read_env
+        env_path = tmp_path / ".env"
+        env_path.write_text("")
+        assert read_env(env_path) == {}
+
+    def test_read_nonexistent_file(self, tmp_path):
+        from app.services.env_file import read_env
+        assert read_env(tmp_path / "missing.env") == {}
+
+    def test_skips_comments(self, tmp_path):
+        from app.services.env_file import read_env
+        env_path = tmp_path / ".env"
+        env_path.write_text("# comment\nKEY=value\n")
+        result = read_env(env_path)
+        assert result == {"KEY": "value"}
+
+
+# --- DockerService._parse_log_lines ---
+
+class TestParseLogLines:
+    def test_standard_docker_timestamp(self):
+        from app.services.docker import DockerService
+        raw = "2024-01-15T10:30:45.123456789Z Container started successfully"
+        lines = DockerService._parse_log_lines(raw)
+        assert len(lines) == 1
+        assert lines[0]["timestamp"] == "2024-01-15 10:30:45"
+        assert lines[0]["message"] == "Container started successfully"
+
+    def test_no_timestamp(self):
+        from app.services.docker import DockerService
+        raw = "Just a plain log line"
+        lines = DockerService._parse_log_lines(raw)
+        assert len(lines) == 1
+        assert lines[0]["timestamp"] == ""
+        assert lines[0]["message"] == "Just a plain log line"
+
+    def test_empty_lines_skipped(self):
+        from app.services.docker import DockerService
+        raw = "line1\n\n\nline2"
+        lines = DockerService._parse_log_lines(raw)
+        assert len(lines) == 2
+
+    def test_multiple_lines(self):
+        from app.services.docker import DockerService
+        raw = (
+            "2024-01-15T10:30:45.123Z First line\n"
+            "2024-01-15T10:30:46.456Z Second line\n"
+        )
+        lines = DockerService._parse_log_lines(raw)
+        assert len(lines) == 2
+        assert lines[0]["message"] == "First line"
+        assert lines[1]["message"] == "Second line"
