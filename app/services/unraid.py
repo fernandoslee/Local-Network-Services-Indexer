@@ -8,7 +8,6 @@ from unraid_api.exceptions import UnraidAPIError, UnraidAuthenticationError
 from app.models import (
     CachedData,
     ContainerInfo,
-    PluginInfo,
     SystemInfo,
     SystemMetrics,
     VmInfo,
@@ -46,18 +45,6 @@ query {
     }
 }
 """
-
-PLUGIN_QUERY = """
-query {
-    plugins {
-        name
-        version
-        hasApiModule
-        hasCliModule
-    }
-}
-"""
-
 
 def _resolve_webui_url(
     webui_template: str,
@@ -101,16 +88,6 @@ def _resolve_webui_url(
     url = re.sub(r"/system/status/?$", "/", url)
 
     return url
-
-
-def _humanize_plugin_name(name: str) -> str:
-    """Convert plugin package names to human-readable form."""
-    parts = name.split(".")
-    if parts[0] == "unraid" and len(parts) > 1:
-        clean = "-".join(parts[1:])
-    else:
-        clean = parts[0]
-    return clean.replace("-", " ").replace("_", " ").title()
 
 
 class UnraidService:
@@ -269,23 +246,6 @@ class UnraidService:
             errors.append(f"VMs: {e}")
             vms = self._cache.vms
 
-        # --- Plugins ---
-        plugins: list[PluginInfo] = []
-        try:
-            raw = await self.client.query(PLUGIN_QUERY)
-            raw_plugins = raw.get("plugins") or []
-            for p in raw_plugins:
-                name = p.get("name", "")
-                plugins.append(PluginInfo(
-                    name=name,
-                    version=p.get("version", ""),
-                    display_name=_humanize_plugin_name(name),
-                ))
-        except UnraidAPIError as e:
-            logger.error("Failed to fetch plugins: %s", e)
-            errors.append(f"Plugins: {e}")
-            plugins = self._cache.plugins
-
         # --- System info ---
         system_info: SystemInfo | None = None
         try:
@@ -330,7 +290,7 @@ class UnraidService:
         self._cache = CachedData(
             containers=containers,
             vms=vms,
-            plugins=plugins,
+            plugins=[],
             system_info=system_info,
             system_metrics=system_metrics,
             last_fetched=time.monotonic(),

@@ -123,12 +123,6 @@ async def test_api_vms(client):
     assert "TestVM" in resp.text
 
 @pytest.mark.asyncio
-async def test_api_plugins(client):
-    resp = await client.get("/api/plugins")
-    assert resp.status_code == 200
-    assert "Community Applications" in resp.text
-
-@pytest.mark.asyncio
 async def test_api_system(client):
     resp = await client.get("/api/system")
     assert resp.status_code == 200

@@ -50,21 +50,6 @@ async def vms_partial(
     })
 
 
-@router.get("/plugins", response_class=HTMLResponse)
-async def plugins_partial(
-    request: Request,
-    service: UnraidService | None = Depends(get_unraid_service),
-):
-    if service is None:
-        return HTMLResponse("<p>Not connected to Unraid server.</p>")
-    data = await service.get_all_data()
-    return templates.TemplateResponse("partials/plugin_list.html", {
-        "request": request,
-        "plugins": data.plugins,
-        "error": data.error,
-    })
-
-
 @router.get("/system", response_class=HTMLResponse)
 async def system_partial(
     request: Request,

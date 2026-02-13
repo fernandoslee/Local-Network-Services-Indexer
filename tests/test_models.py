@@ -6,10 +6,9 @@ import pytest
 
 from unraid_api.exceptions import UnraidAPIError, UnraidAuthenticationError
 
-from app.models import ContainerInfo, PluginInfo, VmInfo
+from app.models import ContainerInfo, VmInfo
 from app.services.unraid import (
     UnraidService,
-    _humanize_plugin_name,
     _resolve_webui_url,
 )
 
@@ -313,22 +312,6 @@ class TestResolveWebuiUrl:
     def test_https_accepted(self):
         url = _resolve_webui_url("https://[IP]:443/app", "1.2.3.4", None, [], "bridge")
         assert url == "https://1.2.3.4:443/app"
-
-
-# --- _humanize_plugin_name ---
-
-class TestHumanizePluginName:
-    def test_unraid_prefix(self):
-        assert _humanize_plugin_name("unraid.community-applications") == "Community Applications"
-
-    def test_no_prefix(self):
-        assert _humanize_plugin_name("my-plugin") == "My Plugin"
-
-    def test_underscores(self):
-        assert _humanize_plugin_name("my_cool_plugin") == "My Cool Plugin"
-
-    def test_dotted_name(self):
-        assert _humanize_plugin_name("unraid.fix-common-problems") == "Fix Common Problems"
 
 
 # --- env_file security ---

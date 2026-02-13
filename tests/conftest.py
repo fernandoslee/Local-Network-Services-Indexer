@@ -8,7 +8,6 @@ from httpx import ASGITransport, AsyncClient
 from app.models import (
     CachedData,
     ContainerInfo,
-    PluginInfo,
     SystemInfo,
     SystemMetrics,
     VmInfo,
@@ -87,8 +86,7 @@ def _make_cached_data(**overrides) -> CachedData:
                             status="Exited (0) 3 hours ago", web_ui_url=None),
         ],
         vms=[_make_vm()],
-        plugins=[PluginInfo(name="community.applications", version="2024.07.25",
-                            display_name="Community Applications")],
+        plugins=[],
         system_info=SystemInfo(
             hostname="tower", cpu_brand="AMD Ryzen 9", cpu_cores=16,
             cpu_threads=32, lan_ip="192.168.1.100",

@@ -24,7 +24,6 @@ async def dashboard_page(
         "request": request,
         "containers": data.containers,
         "vms": data.vms,
-        "plugins": data.plugins,
         "system_info": data.system_info,
         "system_metrics": data.system_metrics,
         "error": data.error,
